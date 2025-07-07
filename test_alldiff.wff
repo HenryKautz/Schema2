@@ -1,0 +1,10 @@
+(type boy (set jon alex max sam))
+(type girl (set mary sue ann june))
+(type child (union boy girl))
+ ;; Three different children all love the same the same girl
+(exists g girl true
+        (exists (c1 c2 c3) child (alldiff g c1 c2 c3)
+                (and
+                    (loves c1 g)
+                    (loves c2 g)
+                    (loves c3 g))))

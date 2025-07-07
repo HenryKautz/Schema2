@@ -1,0 +1,16 @@
+(type boy (set jon alex max sam))
+(type girl (set mary sue ann june))
+(type child (union boy girl))
+ ;; Two different boys all love the same the same girl
+;(all c child true (happy c))
+;(exists g girl true
+        ;(exists c1 child true
+         ;         (loves c1 g)
+       ; ))
+;(exists (c1 c2) child (neq c1 c2) (loves c1 c2))
+;
+(exists c1 child true
+   (exists c2 child true (loves c1 c2)))
+
+
+                

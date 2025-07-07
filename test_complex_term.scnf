@@ -1,0 +1,3 @@
+(OR (FOO (BAR 3)))
+(OR (FOO (BAR 2)))
+(OR (FOO (BAR 1)))

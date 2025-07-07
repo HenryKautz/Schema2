@@ -1,0 +1,11 @@
+(option compact-encoding 0) 
+(type boy (set jon alex bob james))
+(type girl (set mary sue  ellen christine))
+ ;; Two different boys all love the same the same girl
+(exists g girl true
+        (exists (c1 c2) boy (neq c1 c2)
+                (and
+                    (loves c1 g)
+                    (loves c2 g)
+                )))
+

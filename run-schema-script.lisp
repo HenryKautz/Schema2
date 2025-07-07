@@ -1,0 +1,5 @@
+(load "schema.cl")
+(instantiate "f.schema" "f.scnf")
+(propositionalize "f.scnf" "f.cnf" "f.map")
+(satisfy "f.cnf" "f.sol")
+(interpret "f.sol", "f.map", "f.lit")

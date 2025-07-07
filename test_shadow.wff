@@ -1,0 +1,7 @@
+(option shadowing 1)
+(all x (set a b c) t 
+    (and
+        (all x t (set d e) t (foo x))
+        (bar x)
+    )
+)

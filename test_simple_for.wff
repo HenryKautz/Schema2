@@ -1,0 +1,5 @@
+;(type nodeType (for i (range 1 5) true (set (node i))))
+(type nodeType (for i (range 1 5) true (set i)))
+
+(all n nodeType true
+    (isNode n))

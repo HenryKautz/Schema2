@@ -1,0 +1,10 @@
+
+(type nodeType (for i (range 1 5) true (set (node i))))
+
+(all n nodeType true
+    (isNode n))
+
+(type arcType (for (n1 n2) nodeType (neq n1 n2) (set (arc n1 n2))))
+
+(all a arcType true
+    (isArc a))
