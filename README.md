@@ -1,4 +1,4 @@
-# SCHEMA USERS GUIDE
+# SCHEMA 2.0 USERS GUIDE
 
 henry.kautz@gmail.com
 ---------------------
