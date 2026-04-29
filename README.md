@@ -3,7 +3,7 @@
 henry.kautz@gmail.com
 ---------------------
 
-[Gitlab Repository](https://gitlab.com/HenryKautz/Schema)
+[GitHub Repository](https://github.com/HenryKautz/Schema2)
 
 Schema is a language for specifying logical theories using finite-domain first-order logic syntax. Because domains are finite, the language is a compact representation for propositional logic. The Schema interpreter produces propositional CNF (conjunctive normal form) which can be input to any satisfiability testing program.
 
