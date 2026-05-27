@@ -1,6 +1,6 @@
 (define limit 10)
-(type num (range 1 limit))
-(type cell (for i num (set (cell i))))
+(domain num (range 1 limit))
+(domain cell (for i num (set (cell i))))
 
 (observed
  (all i num (< num limit)
