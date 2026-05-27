@@ -1,4 +1,4 @@
-(type girls (set mary beth sue))
+(domain girls (set mary beth sue))
 (big mary)
 (exits g girls true (happy g))
 (blond beth)

@@ -67,11 +67,15 @@ Reads in the output of a SAT solver "test.out" and a mapping file "test.map", an
 **(solve "test.wff" &optional "test.answer"  "test.obs")**
 Reads in the Schema file "test.wff" and an optional "test.obs" observation file, solves it using the **sat-solver-program** and writes the results in symbolic form to "test.answer".  If "test.wff" contains no **prove** formula, the sat solver will be called a single time.  If it does contain **prove**, then the sat solver may be invoked several times as described in the section below on Answer Extraction for Deduction.  The format of "test.answer" will be one of:
 
-- If the formula is satisfiable and it does not contain a prove form: SAT followed by the positive ground literals in a satisying model.
-- If the formula is unsatisfiable and it does not contain a prove form: UNSAT.
-- If the formula is satisfiable and it does contain a prove form: COUNTEREXAMPLE followed by the positive ground literals in a counterexample (satisfying model).
-- If the formula is unsatisfiable and it does contain a prove form and answer extraction succeeded: PROVEN followed by a sequence of variable bindings. Each variable binding is of the form `(<variable> <value>)`
-- If the formula is unsatisfiable and it does contain a prove form but answer extraction failed: NOANSWER.
+- If the formula does not contain a prove form and:
+  - Is satisfiable: SAT followed by the positive ground literals in a satisying model.
+  - Is unsatisfiable: UNSAT.
+
+- If the formula contains a prove form and
+  - Is satisfiable: COUNTEREXAMPLE followed by the positive ground literals in a counterexample (satisfying model).
+  - Is unsatisfiable and answer extraction succeeds: PROVEN followed by a sequence of variable bindings. Each variable binding is of the form `(<variable> <value>)`
+  - Is unsatisfiable but answer extraction failed: NOANSWER.
+
 
 Language
 --------
@@ -243,7 +247,7 @@ Satisfiability testing can be used for deduction by negating the conclusion to b
 Schema provides an alternative way of encoding a deduction problem by using the **prove** construct.  In this case, the last line above would be replaced by:
 
 ```
-(prove () (exists (x y z) Person (neq y z) (and (shorter x y) (x z))))
+(prove () true (exists (x y z) Person (neq y z) (and (shorter x y) (x z))))
 ```
 
 Note that the formula to be deduced is not negated.  Use of prove makes makes the goal of the Schema problem clearer to a user.  
@@ -256,7 +260,7 @@ Note that the formula to be deduced is not negated.  Use of prove makes makes th
 (prove ((x Person)) true (exists (y z) Person (neq y z) (and (shorter x y) (x z))))
 ```
 
-Note that the conclusion inside the prove is unnegated. Prove can also be used to extract the bindings for several variables by specifying a series of variables and domains in the operator. For example, suppose the problem involves people and jobs, states that all mechanics are also drivers and Alice is a mechanic. We wish to find a person with two jobs and the names of those jobs.
+Prove can also be used to extract the bindings for several variables by specifying a series of variables and domains in the operator. For example, suppose the problem involves people and jobs, and states that all mechanics are also drivers and Alice is a mechanic. We wish to find a person with two jobs and the names of those jobs.
 
 ```
 (domain Person (set Alice Bob))  
@@ -414,92 +418,6 @@ Schema BNF
         (all (<variable>+) <set expression> <test> <observed-formula>) |  
         (if <test> <observed-formula>) 
 
+## Using Schema with Python
 
-## Prompting a Large Language Model to Use Schema
-
-A large language model can be prompted to use Schema as follows:
-
-1. Make a copy of this user guide.
-2. Eliminate the sections:
-   - Common Lisp API
-   - Common Lisp API for Answer Extraction
-   - Compact Encodings
-   - Options
-   - Implementing SatPlan in Schema
-3. Eliminate everything in this section that comes before the following paragraph:
-
-In order to improve your ability to reason logically, I am giving you the ability to call an external tool that uses a language named Schema.  When you are asked to solve a logical reasoning problem, instead of solving it yourself, you should instead translate the problem into Schema and output lines of the following form:
-
-```
-SCHEMA[ 
-  <formula>
-  <formula>
-  ... 
-  ]
-```
-
-where <formula> is a formula in the Schema language.  If the formulas do not include a **prove** statement, then Schema will consider it to be a constraint satisfaction problem and test the formula for satisfiability.  If the formulas are satisfiable, you will then read lines of the following form:
-
-```
-RESULT[
-   SAT
-   <literal>
-   <literal>
-   ... 
-]
-```
-
-where <literal> is a positive ground literal in a satisfying assignment for the formulas.  If the formulas are unsatisfiable, then you will read
-
-```
-RESULT[ UNSAT ]
-```
-
-If the formulas contain a **prove** statement, then Schema will consider it to be a deduction problem.  If the formula in the prove statement deductively follows from the other formulas, then you will read lines of the following form:
-
-```
-RESULT[
-   PROVEN
-   (<variable> <term>)
-   (<variable> <term>)
-   ... 
-]
-```
-
-If the formula in the prove form does not deductively follow, then you will read
-
-```
-RESULT[ 
-		UNPROVEN 
-		<literal>
-		<literal>
-		...
-]
-```
-
-where the literals describe a model that is a counterexample to the theorem.
-
-For example, suppose you output
-
-```
-SCHEMA[
-	(domain Person (set Alice Bob))  
-	(domain Job (set Mechanic Driver Programmer))  
-	(all x Person true (work x Mechanic) (work x Driver))  
-	(works Alice Mechanic)  
-	(works Bob Programmer)  
-	(prove (p j1 j2) (Person Job Job) (neq j1 j2) (and (works p j1) (works p j2)))
-]
-```
-
-then you will next read
-
-```
-RESULT[ 
-	PROVEN 
-	(p  Alice)
-	(j1 Mechanic)
-	(j2 Driver)
-]
-```
-
+## Using Schema as an LLM Tool

@@ -33,10 +33,11 @@
 
 (defun file-contains-string-p (search-string filename)
   "Check if a file contains a given string using grep."
-  (let* ((result (uiop:run-program
-                   (list "grep" "-q" search-string filename)
-                   :ignore-exit-status t))
-         (exit-code (uiop:process-info-exit-code result)))
+  (let ((exit-code (nth-value 2
+                    (uiop:run-program
+                      (list "grep" "-q" search-string filename)
+                      :ignore-exit-status t
+                      :output nil :error-output nil))))
     (zerop exit-code)))
 
 (defun read-sexprs-from-file (filename)
@@ -266,10 +267,8 @@
 
 (defun construct-query (var-doms test qbody)
   (cond ((null var-doms) `(not (if ,test ,qbody)))
-        (t (construct-query (cdr var-doms)
-                            `(all ,(caar var-doms) (set ,@(cadar var-doms)))
-                            true
-                            ,qbody))))
+        (t `(all ,(caar var-doms) (set ,@(cadar var-doms))
+                ,(construct-query (cdr var-doms) test qbody)))))
 
 (defun ut-construct-query ()
   (setup-global-env)
@@ -397,7 +396,7 @@
   (defun valid (C)
     (cond ((null C) nil)
           ((member (complement-literal (car C)) (cdr C) :test #'equal) t)
-          (t (vlid (cdr C)))))
+          (t (valid (cdr C)))))
 
   (defun complement-literal (L)
     (cond ((atom L) (list 'not L))
@@ -427,26 +426,23 @@
       nil))
 
   (defun parse-domain (DEFINITION)
-    (set (gethash (car DEFINITION) (parse-set-expression (cadr DEFINITION))) t)
+    (setf (gethash (car DEFINITION) Bind) (parse-set-expression (cadr DEFINITION)))
     nil)
 
   (defun parse-define (DEFINITION)
-    (set (gethash (car DEFINITION) (parse-expression (cadr DEFINITION))) t)
+    (setf (gethash (car DEFINITION) Bind) (parse-expression (cadr DEFINITION)))
     nil)
 
   (defmacro with-binding (VAR VAL &rest BODY)
-    (let (value exists)
-      (multiple-value-bind (oldvalue oldvalueexists) (gethash VAR Bind))
-      (setf (gethash VAR Bind) VAL)
-      (progn ,@BODY)
-      (if oldvalueexists
-          (setf (gethash VAR Bind) oldvalue)
-          (remhash VAR Bind))))
+    `(multiple-value-bind (oldvalue oldvalueexists) (gethash ,VAR Bind)
+       (setf (gethash ,VAR Bind) ,VAL)
+       (prog1 (progn ,@BODY)
+         (if oldvalueexists
+             (setf (gethash ,VAR Bind) oldvalue)
+             (remhash ,VAR Bind)))))
 
   (defun is-bound (VAR)
-    (let (value valueexists)
-      (multiple-value-bind (gethash VAR Bind))
-      valueexists))
+    (nth-value 1 (gethash VAR Bind)))
 
   (defun binding-of (VAR)
     (gethash VAR Bind))
@@ -471,6 +467,7 @@
                 '()
                 '(()))))))
 
+(parse-unit-observations nil) ; define all nested functions at load time
 
 (defun parse-formula (F)
   ;; (format t "entering parse ~S" F)
