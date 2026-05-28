@@ -59,13 +59,13 @@ Reads the Schema file "test.wff", instantiates it, and saves the result in symbo
 Reads the symbolic conjunctive normal form file "test.scnf" and creates a DIMACS format CNF file3 "test.cnf". In DIMACS format (the standard input language for all modern SAT solvers), propositions are represented by positive and negative integers. The mapping from symbolic ground atoms to integers is written to the file "test.map". The file "test.cnf" may then be sent to a SAT solver.
 
 **(satisfy "test.cnf" &optional "test.out")**
-The solver named by the variable **sat-solver-program** (default "kissat") is called on "test.cnf" and the output of the solver is captured in the file "test.out".  Satisfy returns 'SAT, 'UNSAT, or nil if the solver fails or its output contains neither the strings SAT nor UNSAT.
+The solver named by the variable **sat-solver** (default "kissat") is called on "test.cnf" and the output of the solver is captured in the file "test.out".  Satisfy returns 'SAT, 'UNSAT, or nil if the solver fails or its output contains neither the strings SAT nor UNSAT.
 
-**(interpret "test.out" &optional "test.map" "test.lits" sort-by-time)**  
-Reads in the output of a SAT solver "test.out" and a mapping file "test.map", and creates a file "test.lits" containing the positive literals in the satisfying assignment in symbolic form. The file "test.out" specifies a solution by a sequence of positive and negative integers. The format of the file can be flexible; it can simply be a sequence of integers; or be in official DIMACS solution format where lines containing the integers begin with the letter "v"; or free-form text where lines containing only integers are assumed to be the solution. If for some integer, neither the integer nor its complement appears, then it is assumed to be false (negative) for the assignment. The results are sorted alphabetically unless sort-by-time is set to t, in which case the results are sorted by the last argument to each predicate, which is often used to specify a time index.
+**(interpret "test.out" &optional "test.map" "test.soln" sort-by-time)**  
+Reads in the output of a SAT solver "test.out" and a mapping file "test.map", and creates a file "test.soln" containing the positive literals in the satisfying assignment in symbolic form. The file "test.out" specifies a solution by a sequence of positive and negative integers. The format of the file can be flexible; it can simply be a sequence of integers; or be in official DIMACS solution format where lines containing the integers begin with the letter "v"; or free-form text where lines containing only integers are assumed to be the solution. If for some integer, neither the integer nor its complement appears, then it is assumed to be false (negative) for the assignment. The results are sorted alphabetically unless sort-by-time is set to t, in which case the results are sorted by the last argument to each predicate, which is often used to specify a time index.
 
 **(solve "test.wff" &optional "test.answer"  "test.obs")**
-Reads in the Schema file "test.wff" and an optional "test.obs" observation file, solves it using the **sat-solver-program** and writes the results in symbolic form to "test.answer".  If "test.wff" contains no **prove** formula, the sat solver will be called a single time.  If it does contain **prove**, then the sat solver may be invoked several times as described in the section below on Answer Extraction for Deduction.  The format of "test.answer" will be one of:
+Reads in the Schema file "test.wff" and an optional "test.obs" observation file, solves it using the **sat-solver** and writes the results in symbolic form to "test.answer".  If "test.wff" contains no **prove** formula, the sat solver will be called a single time.  If it does contain **prove**, then the sat solver may be invoked several times as described in the section below on Answer Extraction for Deduction.  The format of "test.answer" will be one of:
 
 - If the formula does not contain a prove form and:
   - Is satisfiable: SAT followed by the positive ground literals in a satisying model.
@@ -100,7 +100,7 @@ Propositions are expressed in Schema as either atomic symbols or complex proposi
 
 where "winner" is a predicate, "john" is a simple term, "round" is an uninterpreted function symbol, and "(round 24)" is a complex term.
 
-The integer values 1 and 0 are used to represent true and false respectively in integer expressions. The special constants "true" and "false" are equivalent to 1 and 0 respectively when they appear in integer expressions. Integer expressions may include arithmetic functions (+, -, \*, div, rem, mod), comparison functions (<, <=, =, >=, >, member, eq, neq, alldiff), set composition functions (enumerated sets, ranges of integers, union, intersection, setdiff), logical functions (and, or, not), and observed predicates. Non-observed predicates may not appear in an integer expression. Note that logical operators in integer expressions are evaluated by the Schema interpreter and do not appear in the final CNF, unlike the logical operators that have the same names.
+The integer values 1 and 0 are used to represent true and false respectively in integer expressions. The special constants "true" and "false" are equivalent to 1 and 0 respectively when they appear in integer expressions. Integer expressions may include arithmetic functions (+, -, \*, div, rem, mod), comparison functions (<, <=, =, >=, >, member, eq, neq, alldiff), set composition functions (enumerated sets, ranges of integers, union, intersection, set-difference), logical functions (and, or, not), and observed predicates. Non-observed predicates may not appear in an integer expression. Note that logical operators in integer expressions are evaluated by the Schema interpreter and do not appear in the final CNF, unlike the logical operators that have the same names.
 
 Comments can appear in the input.  They begin with ;; (double semicolon) and extend to the end of the line.
 
@@ -191,11 +191,11 @@ Making "connected" an observed predicate has several advantages:
 - The predicate may be used inside test expressions.
 - The instantiated formula is smaller because observed literals are compiled away.
 
-A predicate can be declared to be observed in two ways. The **observations** form can be used to specify it's positive literals.  These should appear before any other formulas are asserted.  For example:
+A predicate can be declared to be observed in two ways. The **observed** form can be used to specify it's positive literals.  These should appear before any other formulas are asserted.  For example:
 
 ```
 (domain Node (set N1 N2 N3 N4 N5))
-(observations 
+(observed 
 	(edge N1 N2)  
 	(edge N3 N4)  
 	(edge N3 N5))
@@ -241,23 +241,23 @@ Satisfiability testing can be used for deduction by negating the conclusion to b
 (shorter Alice Bob)  
 (shorter Bob Charlie)  
 (all (x y z) Person true (implies (and (shorter x y) (shorter y z)) (shorter x z)))  
-(not (exist (x y z) Person (neq y z) (and (shorter x y) (x z))))
+(not (exists (x y z) Person (neq y z) (and (shorter x y) (shorter x z))))
 ```
 
 Schema provides an alternative way of encoding a deduction problem by using the **prove** construct.  In this case, the last line above would be replaced by:
 
 ```
-(prove () true (exists (x y z) Person (neq y z) (and (shorter x y) (x z))))
+(prove () true (exists (x y z) Person (neq y z) (and (shorter x y) (shorter x z))))
 ```
 
 Note that the formula to be deduced is not negated.  Use of prove makes makes the goal of the Schema problem clearer to a user.  
 
 ## Answer Extraction for Deduction
 
- Suppose we want to also *derive* the constant for person who is shorter than two other people. Schema provides the operator "prove" to support answer extraction from proofs of unsatisfiability. A single find operation may appear as the last schema in the list of input schemas. The last schema in previous example would be changed to:
+ Suppose we want to also *derive* the constant for person who is shorter than two other people. Schema provides the operator "prove" to support answer extraction from proofs of unsatisfiability. A single prove operation may appear as the last schema in the list of input schemas. The last schema in previous example would be changed to:
 
 ```
-(prove ((x Person)) true (exists (y z) Person (neq y z) (and (shorter x y) (x z))))
+(prove ((x Person)) true (exists (y z) Person (neq y z) (and (shorter x y) (shorter x z))))
 ```
 
 Prove can also be used to extract the bindings for several variables by specifying a series of variables and domains in the operator. For example, suppose the problem involves people and jobs, and states that all mechanics are also drivers and Alice is a mechanic. We wish to find a person with two jobs and the names of those jobs.
@@ -265,7 +265,7 @@ Prove can also be used to extract the bindings for several variables by specifyi
 ```
 (domain Person (set Alice Bob))  
 (domain Job (set Mechanic Driver Programmer))  
-(all x Person true (and (work x Mechanic) (work x Driver)))
+(all x Person true (and (works x Mechanic) (works x Driver)))
 (works Alice Mechanic)  
 (works Bob Programmer)  
 (prove ((p Person) ((j1 j2) Job)) (neq j1 j2) (and (works p j1) (works p j2)))
@@ -344,10 +344,6 @@ The input to Schema may include the following options, which should appear befor
 (option compact-encoding 1) 
 ; Do not create new propositions 
 (option compact-encoding 0) 
-; Allow an inner quantified variable to shadow an outer variable of the same name.
-(option shadowing 1) 
-; Do not allow the same variable name to be used in nested subformulas (default).
-(option shadowing 0) 
 ```
 
 ## Implementing SatPlan in Schema
@@ -361,7 +357,7 @@ Schema BNF
     
     <option> = (option <option name> <integer expression>)
     
-    <option name> = compact | shadowing
+    <option name> = compact-encoding
     
     <domain declaration> = (domain <domain name> <set expression>)
     
@@ -384,7 +380,7 @@ Schema BNF
     		(range <integer expression> <integer expression>) |  
         (union <set expression> <set expression>) | 
         (intersection <set expression> <set expression>) |  
-        (setdiff <set expression> <set expression>) | 
+        (set-difference <set expression> <set expression>) | 
         (for <variable> <set expression> <test> <set expression>) |
         (for (<variable>+) <set expression> <test> <set expression>) |
         (lisp <lisp list valued expression>)
@@ -400,7 +396,6 @@ Schema BNF
     		<variable ranging over an integer domain> | 
     		(<observed predicate symbol> <term>*) |  
         (member <term> <set expression>) | 
-        (set-difference <set expression> <set expression>) |
         (alldiff <term> <term>+) |  
         (not <integer expression>) | 
         (and <integer expression>\*) | 

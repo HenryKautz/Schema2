@@ -10,7 +10,6 @@
 
 ;; Default values of options
 (defvar compact-encoding t)
-(defvar shadowing t)
 (defvar binary-functions '(eq neq = > < >= <= member
                               union intersection set-difference + - * div rem mod ** bit
                               range))
@@ -62,7 +61,14 @@
       (setq CNFFILE (concatenate 'string CNFFILE ".cnf")))
   (if (not SATOUTFILE)
       (setq SATOUTFILE (replace-suffix-with-regex CNFFILE "\\..*?$" ".satout")))
-  (uiop:run-program sat-solver :arguments (list CNFFILE) :search-path t :output SATOUTFILE))
+  (handler-case
+      (uiop:run-program sat-solver :arguments (list CNFFILE) :search-path t
+                        :output SATOUTFILE :ignore-error-status t)
+    (error () (return-from satisfy nil)))
+  ;; Check UNSAT first since SAT is a substring of UNSAT/UNSATISFIABLE.
+  (cond ((file-contains-string-p "UNSAT" SATOUTFILE) 'UNSAT)
+        ((file-contains-string-p "SAT" SATOUTFILE) 'SAT)
+        (t nil)))
 
 (defun instantiate (WFFFILE &optional SCNFILE OBSFILE)
   (if (null (cl-ppcre:scan "\\.." WFFFILE))
@@ -84,7 +90,7 @@
 
 (defun propositionalize (SCNFFILE &optional CNFFILE MAPFILE)
   (if (null (cl-ppcre:scan "\\.." SCNFFILE))
-      (setq INFILE (concatenate 'string SCNFFILE ".scnf")))
+      (setq SCNFFILE (concatenate 'string SCNFFILE ".scnf")))
   (if (not CNFFILE)
       (setq CNFFILE (replace-suffix-with-regex SCNFFILE "\\..*?$" ".cnf")))
   (if (not MAPFILE)
@@ -106,7 +112,7 @@
   (if (not MAPFILE)
       (setq MAPFILE (replace-suffix-with-regex SATOUTFILE "\\..*?$" ".map")))
   (if (not SOLNFILE)
-      (setq SOLNFILE (replace-suffix-with-regex SATOUTFILE "\\.*?$" ".soln")))
+      (setq SOLNFILE (replace-suffix-with-regex SATOUTFILE "\\..*?$" ".soln")))
   (let (solndata mapdata litdata)
     ;; Read solnfile to create solution list.  Ignore any non-integers and negative integers in solnfile.
     ;; Get list of lines of the solution
@@ -147,7 +153,10 @@
       (setq SOLNFILE (replace-suffix-with-regex WFFFILE "\\..*?$" ".soln")))
   (if (eq OBSFILE t)
       (setq OBSFILE (replace-suffix-with-regex WFFFILE "\\..*?$" ".obs")))
-  (let (observations)
+  (let (schemas observations SCHEMA OBSERVATION)
+    (with-open-file (INS WFFFILE :direction :input)
+      (setq schemas (loop while (not (eql 'EOF (setq SCHEMA (read INS nil 'EOF))))
+                          collect SCHEMA)))
     (if OBSFILE
         (with-open-file (OBS OBSFILE :direction :input)
           (setq observations (loop while (not (eql 'EOF (setq OBSERVATION (read OBS nil 'EOF))))
@@ -170,15 +179,15 @@
         (satout-file (format nil "~a.satout" scratch-file))
         (soln-file (format nil "~a.soln" scratch-file)))
     (if debugp
-        (print ";;test-scnf ~S" scnf))
-    (if (member debugp '(SAT UNSAT))
-        (return (values debugp nil)))
+        (format t ";;test-scnf ~S~%" scnf))
+    (when (member debugp '(SAT UNSAT))
+      (return-from test-scnf (values debugp nil)))
     (with-open-file (SCNF-STREAM scnf-file :direction :output :if-exists :supersede)
-      (dolist ((c scnf)) (format SCNF-STREAM "~S~%" c)))
+      (dolist (c scnf) (format SCNF-STREAM "~S~%" c)))
     (propositionalize scnf-file)
     (satisfy cnf-file)
     (interpret satout-file)
-    (let (results (read-sexprs-from-file soln-file))
+    (let ((results (read-sexprs-from-file soln-file)))
       (values (car results) (cdr results)))))
 
 (defun lit2prop (CL)
@@ -213,14 +222,14 @@
     proplist))
 
 (defun alpha-ordering (p q)
-  (string-lessp (format nil "~s" p) (format nil "~s" p)))
+  (string-lessp (format nil "~s" p) (format nil "~s" q)))
 
 (defun time-order-r (p q)
   (cond ((and (integerp p) (integerp q)) (< p q))
         ((and (atom p) (atom q)) (string-lessp p q))
         ((atom p) t)
         ((atom q) nil)
-        ((equal (car p) (car q)) (prop-order-r (cdr p) (cdr q)))
+        ((equal (car p) (car q)) (time-order-r (cdr p) (cdr q)))
         (t (time-order-r (car p) (car q)))))
 
 (defun time-ordering (p q)
@@ -248,7 +257,8 @@
 
 (defun term-search (found notfound test qbody assumptions)
   (if debugp
-      (print "::term-search :found=~S :notfound=~S :test=~S :qbody=~S :assumptions=~S" found notfound test qbody assumptions))
+      (format t "::term-search :found=~S :notfound=~S :test=~S :qbody=~S :assumptions=~S~%"
+              found notfound test qbody assumptions))
   (cond
    ((null notfound) `(BINDINGS ,@found))
    (t (let* ((var (caar notfound))
@@ -257,53 +267,81 @@
              (wff (append (parse-schema query) assumptions))
              (result (test-scnf wff)))
         (if debugp
-            (print "::term-search :var=~S :dom=~S :query=~S :wff=~S :result=~S" var dom query wff result))
+            (format t "::term-search :var=~S :dom=~S :query=~S :wff=~S :result=~S~%"
+                    var dom query wff result))
         (cond ((eq result 'SAT) nil)
               ((= (length dom) 1)
-                (term-search (cons (list var dom) found) (cdr notfound) qbody assumptions))
+                (term-search (cons (list var (car dom)) found) (cdr notfound) test qbody assumptions))
               (t (multiple-value-bind (dom1 dom2) (split-list dom)
-                   (or (termsearch found (cons (list var dom1) (cdr notfound)) qbody assumptions)
-                       (termsearch found (cons (list var dom2) (cdr notfound)) qbody assumptions)))))))))
+                   (or (term-search found (cons (list var dom1) (cdr notfound)) test qbody assumptions)
+                       (term-search found (cons (list var dom2) (cdr notfound)) test qbody assumptions)))))))))
 
 (defun construct-query (var-doms test qbody)
   (cond ((null var-doms) `(not (if ,test ,qbody)))
-        (t `(all ,(caar var-doms) (set ,@(cadar var-doms))
-                ,(construct-query (cdr var-doms) test qbody)))))
+        (t `(all ,(caar var-doms) (set ,@(cadar var-doms)) t
+                 ,(construct-query (cdr var-doms) test qbody)))))
 
 (defun ut-construct-query ()
   (setup-global-env)
   (parse-same-env '((domain bird (set robin cardinal crow)) (domain fruit (set apple berry banana))))
-  (let answ (construct-query '((x bird) (y bird)) '(neq x y) '(or (bigger x y) (bigger y x))))
-  answ)
+  (let ((answ (construct-query '((x (robin cardinal crow)) (y (robin cardinal crow)))
+                               '(neq x y)
+                               '(or (bigger x y) (bigger y x)))))
+    answ))
 
 
 (defun pull-out-prove (wff)
-  (values (find 'prove wff :key #'car :test #'eq)
-    (remove 'prove wff :key #'car :test #'eq)))
+  (let ((pred (lambda (s) (and (listp s) (eq (car s) 'prove)))))
+    (values (find-if pred wff)
+            (remove-if pred wff))))
 
 
 (defun expand-var-domain-list (vdlist)
+  ;; Take a list like ((x Person) ((y z) Job)) and produce
+  ;; ((x <values-of-Person>) (y <values-of-Job>) (z <values-of-Job>))
   (cond ((null vdlist) nil)
         ((null (caar vdlist)) (expand-var-domain-list (cdr vdlist)))
-        ((listp (caar vdlist)) (expand-var-domain-list `((,(caaar vdlist) ,(cadar vdist)) (,(cdaar vdlist) ,(cadar vdlist)) ,@(cdr vdlist))))
-        (t (`((,(caar vdlist) ,@(parse-set-expression (cadar vdlist)) ,@(expand-var-domain-list (cdr vdlist))))))))
+        ;; Multi-var form like ((x y z) <domain>) -- peel off the first var.
+        ((listp (caar vdlist))
+         (expand-var-domain-list
+          `((,(caaar vdlist) ,(cadar vdlist))
+            (,(cdaar vdlist) ,(cadar vdlist))
+            ,@(cdr vdlist))))
+        (t (cons (list (caar vdlist) (parse-set-expression (cadar vdlist)))
+                 (expand-var-domain-list (cdr vdlist))))))
 
 
-;; returns
-;; 'SAT, model (positive literals in symbolic form)
-;; 'UNSAT, nil
-;; 'BINDINGS, bindings
-;; 'FAILED, nil
+;; returns, matching the output labels documented in README.md:
+;;   No prove form:
+;;     'SAT, model            (positive literals in symbolic form)
+;;     'UNSAT, nil
+;;   Has prove form:
+;;     'COUNTEREXAMPLE, model (theory + negated conclusion is satisfiable)
+;;     'PROVEN, bindings      (theory entails conclusion; answer extraction succeeded)
+;;     'NOANSWER, nil         (theory entails conclusion; answer extraction failed)
 (defun solve-schemas (schemas &optional observations)
   (multiple-value-bind (prove-form rest-of-wff) (pull-out-prove schemas)
     (cond ((null prove-form)
             (test-scnf (parse schemas observations)))
           (t
-            (let ((vdlist (cadr prove-form)) (test (caddr prove-form)) (qbody (cadddr prove-form)) (assumptions (parse rest-of-wff)))
-              (let ((notfound (expand-var-domain-list vdlist)))
-                (let ((result (termsearch nil notfound test qbody assumptions)))
-                  (cond ((null result) (values 'FAILED nil))
-                        (t (values 'BINDINGS (car result)))))))))))
+            (let* ((vdlist (cadr prove-form))
+                   (test (caddr prove-form))
+                   (qbody (cadddr prove-form))
+                   (assumptions (parse rest-of-wff observations)))
+              ;; First check whether the theory plus the negation of the prove
+              ;; conclusion is satisfiable.  If SAT, that model is a counterexample.
+              ;; If UNSAT, the theory entails the conclusion and we attempt answer
+              ;; extraction.
+              (multiple-value-bind (sat-result model)
+                  (test-scnf (append (parse-schema `(not (if ,test ,qbody)))
+                                     assumptions))
+                (cond ((eq sat-result 'SAT)
+                        (values 'COUNTEREXAMPLE model))
+                      (t
+                        (let* ((notfound (expand-var-domain-list vdlist))
+                               (bindings (term-search nil notfound test qbody assumptions)))
+                          (cond ((null bindings) (values 'NOANSWER nil))
+                                (t (values 'PROVEN (cdr bindings)))))))))))))
 
 ;;;
 ;;; Parsing 
@@ -343,131 +381,131 @@
 ;;; We allow a clause to be proposition (so not a list).
 
 (defun parse-unit-observations (OBSERVATION-LIST)
+  ;; OBSERVATION-LIST is a list of unit positive literals.  Each literal is
+  ;; either an atom (a 0-ary predicate) or a list (predicate arg1 arg2 ...).
   (cond ((null OBSERVATION-LIST) nil)
-        ((and (listp (car OBSERVATION-LIST))
-              (> (length car observation-list) 1)
-              (error "Bad observation form ~S" (car observation-list)))
-          (t
-           ;; handle propositions as well as zero-ary literals
-           (setf (gethash
-                   (if (listp (car OBSERVATION-LIST))
-                       (caar OBSERVATION-LIST)
-                       (car OBSERVATION-LIST))
-                   ObservedPredicates)
-             1)
-           (let ((oldvalue (gethash (car OBSERVATION-LIST) ObservedLiterals)))
-             (if (not oldvalue)
-                 (progn
-                  (setf (gethash (car OBSERVATION-LIST) ObservedLiterals) 1)
-                  (setq new-observation t))))
-           (parse-unit-observations (cdr OBSERVATION-LIST)))))
+        (t
+         (setf (gethash
+                 (if (listp (car OBSERVATION-LIST))
+                     (caar OBSERVATION-LIST)
+                     (car OBSERVATION-LIST))
+                 ObservedPredicates)
+               1)
+         (let ((oldvalue (gethash (car OBSERVATION-LIST) ObservedLiterals)))
+           (if (not oldvalue)
+               (progn
+                 (setf (gethash (car OBSERVATION-LIST) ObservedLiterals) 1)
+                 (setq new-observation t))))
+         (parse-unit-observations (cdr OBSERVATION-LIST)))))
 
-  (defun parse-observations (OBSERVATION-LIST)
-    (setq new-observation nil)
-    (loop do
-            (parse-observation-list OBSERVATION-LIST)
-          while new-observation)
-    nil)
+(defun parse-observations (OBSERVATION-LIST)
+  ;; Re-evaluate each observation form until no new literals are added,
+  ;; so that quantified observations whose tests depend on earlier
+  ;; observations are fully expanded.
+  (loop do
+        (setq new-observation nil)
+        (parse-observation-list OBSERVATION-LIST)
+        while new-observation)
+  nil)
 
-  (defun parse-observation-list (OBSERVATION-LIST)
-    (cond ((null OBSERVATION-LIST) nil)
-          (t (parse-observation-form (car OBSERVATION-LIST))
-             (parse-observation-list (cdr OBSERVATION-LIST)))))
+(defun parse-observation-list (OBSERVATION-LIST)
+  (cond ((null OBSERVATION-LIST) nil)
+        (t (parse-observation-form (car OBSERVATION-LIST))
+           (parse-observation-list (cdr OBSERVATION-LIST)))))
 
-  (defun parse-observation-form (FORM)
-    ;; The FORM is first parsed and so converted to a list of clauses.
-    (let ((observation-list) (parse-schema FORM))
-      (parse-unit-observations FORM)))
+(defun parse-observation-form (FORM)
+  ;; Parse the form to a list of clauses.  The language restricts observation
+  ;; bodies to and/all/if and positive literals, so each clause is a unit
+  ;; positive literal; take the car of each clause to recover it.
+  (parse-unit-observations (mapcar #'car (parse-schema FORM))))
 
-  ;; Recursive version of remove-valid-clauses blew up recursion stack
-  ;;
-  ;; (defun remove-valid-clauses (CL)
-  ;;  (cond ((null CL) nil)
-  ;;	((valid (car CL)) (remove-valid-clauses (cdr CL)))
-  ;;	(t (cons (car CL) (remove-valid-clauses (cdr CL))))))
+;; Recursive version of remove-valid-clauses blew up recursion stack
+;;
+;; (defun remove-valid-clauses (CL)
+;;  (cond ((null CL) nil)
+;;	((valid (car CL)) (remove-valid-clauses (cdr CL)))
+;;	(t (cons (car CL) (remove-valid-clauses (cdr CL))))))
 
-  (defun remove-valid-clauses (CL)
-    (let (answer)
-      (dolist (c CL)
-        (if (null (valid c))
-            (setq answer (cons c answer))))
-      answer))
+(defun remove-valid-clauses (CL)
+  (let (answer)
+    (dolist (c CL)
+      (if (null (valid c))
+          (setq answer (cons c answer))))
+    answer))
 
-  (defun valid (C)
-    (cond ((null C) nil)
-          ((member (complement-literal (car C)) (cdr C) :test #'equal) t)
-          (t (valid (cdr C)))))
+(defun valid (C)
+  (cond ((null C) nil)
+        ((member (complement-literal (car C)) (cdr C) :test #'equal) t)
+        (t (valid (cdr C)))))
 
-  (defun complement-literal (L)
-    (cond ((atom L) (list 'not L))
-          ((eql (car L) 'not) (cadr L))
-          (t (list 'not L))))
+(defun complement-literal (L)
+  (cond ((atom L) (list 'not L))
+        ((eql (car L) 'not) (cadr L))
+        (t (list 'not L))))
 
-  (defun parse-schema-list (SCHEMA-LIST)
-    (cond ((null SCHEMA-LIST) nil)
-          (t (append (parse-schema (car SCHEMA-LIST))
-               (parse-schema-list (cdr SCHEMA-LIST))))))
+(defun parse-schema-list (SCHEMA-LIST)
+  (cond ((null SCHEMA-LIST) nil)
+        (t (append (parse-schema (car SCHEMA-LIST))
+             (parse-schema-list (cdr SCHEMA-LIST))))))
 
-  (defun parse-schema (SCHEMA)
-    (cond ((atom SCHEMA) (parse-formula SCHEMA))
-          ((eql (car SCHEMA) 'domain) (parse-domain (cdr SCHEMA)))
-          ((eql (car SCHEMA) 'define) (parse-define (cdr SCHEMA)))
-          ((eql (car SCHEMA) 'option) (parse-option (cdr SCHEMA)))
-          ((eql (car SCHEMA) 'observed) (parse-observations (cdr SCHEMA)))
-          (t (parse-formula SCHEMA))))
+(defun parse-schema (SCHEMA)
+  (cond ((atom SCHEMA) (parse-formula SCHEMA))
+        ((eql (car SCHEMA) 'domain) (parse-domain (cdr SCHEMA)))
+        ((eql (car SCHEMA) 'alias) (parse-alias (cdr SCHEMA)))
+        ((eql (car SCHEMA) 'option) (parse-option (cdr SCHEMA)))
+        ((eql (car SCHEMA) 'observed) (parse-observations (cdr SCHEMA)))
+        (t (parse-formula SCHEMA))))
 
-  (defun parse-option (ARGS)
-    (let ((opt (car ARGS))
-          (val (parse-expression (cadr ARGS))))
-      (if (eql val 0) (setq val nil))
-      (cond ((member opt '(compact-encoding shadowing))
-              (set opt val))
-            (t (error "Cannot parse option ~S" ARGS)))
-      nil))
+(defun parse-option (ARGS)
+  (let ((opt (car ARGS))
+        (val (parse-expression (cadr ARGS))))
+    (if (eql val 0) (setq val nil))
+    (cond ((eql opt 'compact-encoding)
+            (set opt val))
+          (t (error "Cannot parse option ~S" ARGS)))
+    nil))
 
-  (defun parse-domain (DEFINITION)
-    (setf (gethash (car DEFINITION) Bind) (parse-set-expression (cadr DEFINITION)))
-    nil)
+(defun parse-domain (DEFINITION)
+  (setf (gethash (car DEFINITION) Bind) (parse-set-expression (cadr DEFINITION)))
+  nil)
 
-  (defun parse-define (DEFINITION)
-    (setf (gethash (car DEFINITION) Bind) (parse-expression (cadr DEFINITION)))
-    nil)
+(defun parse-alias (DEFINITION)
+  (setf (gethash (car DEFINITION) Bind) (parse-expression (cadr DEFINITION)))
+  nil)
 
-  (defmacro with-binding (VAR VAL &rest BODY)
-    `(multiple-value-bind (oldvalue oldvalueexists) (gethash ,VAR Bind)
-       (setf (gethash ,VAR Bind) ,VAL)
-       (prog1 (progn ,@BODY)
-         (if oldvalueexists
-             (setf (gethash ,VAR Bind) oldvalue)
-             (remhash ,VAR Bind)))))
+(defmacro with-binding (VAR VAL &rest BODY)
+  `(multiple-value-bind (oldvalue oldvalueexists) (gethash ,VAR Bind)
+     (setf (gethash ,VAR Bind) ,VAL)
+     (prog1 (progn ,@BODY)
+       (if oldvalueexists
+           (setf (gethash ,VAR Bind) oldvalue)
+           (remhash ,VAR Bind)))))
 
-  (defun is-bound (VAR)
-    (nth-value 1 (gethash VAR Bind)))
+(defun is-bound (VAR)
+  (nth-value 1 (gethash VAR Bind)))
 
-  (defun binding-of (VAR)
-    (gethash VAR Bind))
+(defun binding-of (VAR)
+  (gethash VAR Bind))
 
-  (defun is-observed-literal (F)
-    (cond ((not (is-literal F)) nil)
-          ((and (listp F) (eql (car F) 'not))
-            (is-observed-literal (cadr F)))
-          ((listp F)
-            (gethash (car F) ObservedPredicates))
-          (t
-            (gethash F ObservedPredicates))))
+(defun is-observed-literal (F)
+  (cond ((not (is-literal F)) nil)
+        ((and (listp F) (eql (car F) 'not))
+          (is-observed-literal (cadr F)))
+        ((listp F)
+          (gethash (car F) ObservedPredicates))
+        (t
+          (gethash F ObservedPredicates))))
 
-  (defun parse-observed-literal (F)
-    ;; returns NIL if observed literal is true and (nil) if it is false
-    (cond ((and (listp F) (eql (car F) 'not))
-            (if (is-true (gethash (parse-literal (cadr F)) ObservedLiterals 0))
-                '(())
-                '()))
-          (t
-            (if (is-true (gethash (parse-literal F) ObservedLiterals 0))
-                '()
-                '(()))))))
-
-(parse-unit-observations nil) ; define all nested functions at load time
+(defun parse-observed-literal (F)
+  ;; returns NIL if observed literal is true and (nil) if it is false
+  (cond ((and (listp F) (eql (car F) 'not))
+          (if (is-true (gethash (parse-literal (cadr F)) ObservedLiterals 0))
+              '(())
+              '()))
+        (t
+          (if (is-true (gethash (parse-literal F) ObservedLiterals 0))
+              '()
+              '(())))))
 
 (defun parse-formula (F)
   ;; (format t "entering parse ~S" F)
@@ -722,7 +760,7 @@
           ((eql op '+) (+ e1 e2))
           ((eql op '-) (- e1 e2))
           ((eql op '*) (* e1 e2))
-          ((eql op 'bit) (logand 1 (lsh e2 (- 1 e1))))
+          ((eql op 'bit) (logand 1 (ash e2 (- 1 e1))))
           ((eql op '**) (expt e1 e2))
           ((eql op 'div) (floor (/ e1 e2)))
           ((eql op 'rem) (- e1 (* e2 (floor (/ e1 e2)))))
