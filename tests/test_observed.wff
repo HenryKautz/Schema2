@@ -1,9 +1,9 @@
-(define limit 10)
+(alias limit 10)
 (domain num (range 1 limit))
 (domain cell (for i num (set (cell i))))
 
 (observed
- (all i num (< num limit)
+ (all i num (< i limit)
       (next (cell i) (cell (+ 1 i))))
 
  (all (a b) cell (next a b)
@@ -13,5 +13,5 @@
       (smaller a c))
  )
 
-(for (a b) (smaller a b) (non-observed-smaller a b))
+(all (a b) cell (smaller a b) (non-observed-smaller a b))
  
