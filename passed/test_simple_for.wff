@@ -1,0 +1,5 @@
+(domain nodeType (for i (range 1 5) true (set (node i))))
+
+
+(all n nodeType true
+    (isNode n))

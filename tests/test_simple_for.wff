@@ -1,5 +1,0 @@
-;(domain nodeType (for i (range 1 5) true (set (node i))))
-(domain nodeType (for i (range 1 5) true (set i)))
-
-(all n nodeType true
-    (isNode n))
