@@ -352,6 +352,9 @@
 (defvar Bind)
 (defvar ObservedPredicates)
 (defvar ObservedLiterals)
+;; When true, parse-formula treats observed predicates as plain literals to assert
+;; (used when processing observation form bodies so newly derived pairs get added).
+(defvar observation-body-mode nil)
 
 (defun setup-global-env ()
   ; Set up global environment
@@ -418,7 +421,10 @@
   ;; Parse the form to a list of clauses.  The language restricts observation
   ;; bodies to and/all/if and positive literals, so each clause is a unit
   ;; positive literal; take the car of each clause to recover it.
-  (parse-unit-observations (mapcar #'car (parse-schema FORM))))
+  ;; observation-body-mode prevents parse-formula from treating observed
+  ;; predicates as truth-value checks so newly derived literals get asserted.
+  (let ((observation-body-mode t))
+    (parse-unit-observations (mapcar #'car (parse-schema FORM)))))
 
 ;; Recursive version of remove-valid-clauses blew up recursion stack
 ;;
@@ -520,7 +526,7 @@
 
 (defun parse-formula (F)
   ;; (format t "entering parse ~S" F)
-  (cond ((is-observed-literal F) (parse-observed-literal F))
+  (cond ((and (not observation-body-mode) (is-observed-literal F)) (parse-observed-literal F))
         ((is-literal F) (list (list (parse-literal F))))
         ((eql (car F) 'not) (parse-not (cadr F)))
         ((eql (car F) 'and) (parse-and (cdr F)))
