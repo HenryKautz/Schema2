@@ -10,6 +10,7 @@
 
 ;; Default values of options
 (defvar compact-encoding t)
+(defvar tracep nil)
 (defvar binary-functions '(eq neq = > < >= <= member
                               union intersection set-difference + - * div rem mod ** bit
                               range))
@@ -449,6 +450,11 @@
              (parse-schema-list (cdr SCHEMA-LIST))))))
 
 (defun parse-schema (SCHEMA)
+  (when tracep
+    (cond ((atom SCHEMA)
+           (format t "[TRACE] Formula: ~S~%" SCHEMA))
+          ((member (car SCHEMA) '(domain alias option observed)) nil)
+          (t (format t "[TRACE] Formula: (~A ...)~%" (car SCHEMA)))))
   (cond ((atom SCHEMA) (parse-formula SCHEMA))
         ((eql (car SCHEMA) 'domain) (parse-domain (cdr SCHEMA)))
         ((eql (car SCHEMA) 'alias) (parse-alias (cdr SCHEMA)))
@@ -462,12 +468,17 @@
     (if (eql val 0) (setq val nil))
     (cond ((eql opt 'compact-encoding)
             (set opt val))
+          ((eql opt 'trace)
+            (setq tracep val)
+            (when tracep (format t "[TRACE] Tracing enabled~%")))
           (t (error "Cannot parse option ~S" ARGS)))
     nil))
 
 (defun parse-domain (DEFINITION)
-  (setf (gethash (car DEFINITION) Bind) (parse-set-expression (cadr DEFINITION)))
-  nil)
+  (let ((vals (parse-set-expression (cadr DEFINITION))))
+    (when tracep (format t "[TRACE] Domain ~S = ~S~%" (car DEFINITION) vals))
+    (setf (gethash (car DEFINITION) Bind) vals)
+    nil))
 
 (defun parse-alias (DEFINITION)
   (setf (gethash (car DEFINITION) Bind) (parse-expression (cadr DEFINITION)))
@@ -579,14 +590,19 @@
                              (parse-or (cdr FL))))))
 
 (defun multiply-clauses (L R)
-  (if (or (null compact-encoding)
-          (< (length L) 2)
-          (< (length R) 2)
-          (< (+ (length L) (length R)) 5))
-      (explicit-multiply-clauses L R)
-      (let ((g (gensym "XX"))) ;; g selects whether L or R must be true
-        (append (mapcar #'(lambda (c) (cons g c)) R)
-          (mapcar #'(lambda (c) (cons (list 'not g) c)) L)))))
+  (let ((result
+          (if (or (null compact-encoding)
+                  (< (length L) 2)
+                  (< (length R) 2)
+                  (< (+ (length L) (length R)) 5))
+              (explicit-multiply-clauses L R)
+              (let ((g (gensym "XX"))) ;; g selects whether L or R must be true
+                (append (mapcar #'(lambda (c) (cons g c)) R)
+                        (mapcar #'(lambda (c) (cons (list 'not g) c)) L))))))
+    (when tracep
+      (format t "[TRACE] Multiply: ~D x ~D -> ~D clauses~%"
+              (length L) (length R) (length result)))
+    result))
 
 (defun merge-clauses (C1 C2)
   (remove-duplicates (append C1 C2) :test #'equal))
@@ -620,28 +636,40 @@
 (defun parse-all (VAR DOM TEST BODY)
   (cond ((null DOM) nil) ;; the empty list of clauses
         ;; a single variable is specified
-        ((not (listp VAR)) (append (parse-binding VAR (car DOM) TEST BODY nil)
-                             (parse-all VAR (cdr DOM) TEST BODY)))
+        ((not (listp VAR))
+         (when tracep (format t "[TRACE] ALL ~S = ~S~%" VAR (car DOM)))
+         (append (parse-binding VAR (car DOM) TEST BODY nil)
+                 (parse-all VAR (cdr DOM) TEST BODY)))
         ;; a list of variables is specified
-        (t (parse-formula (expand-multivar-all VAR DOM TEST BODY)))))
+        (t
+         (when tracep (format t "[TRACE] ALL ~S over ~S~%" VAR DOM))
+         (parse-formula (expand-multivar-all VAR DOM TEST BODY)))))
 
 
 (defun parse-exists (VAR DOM TEST BODY)
   (cond ((NULL Dom) (list nil)) ;; the empty clause
         ;; a single variable is specified
-        ((not (listp VAR)) (multiply-clauses (parse-binding VAR (car DOM) TEST BODY (list nil))
-                                             (parse-exists VAR (cdr DOM) TEST BODY)))
+        ((not (listp VAR))
+         (when tracep (format t "[TRACE] EXISTS ~S = ~S~%" VAR (car DOM)))
+         (multiply-clauses (parse-binding VAR (car DOM) TEST BODY (list nil))
+                           (parse-exists VAR (cdr DOM) TEST BODY)))
         ;; a list of variables is specified
-        (t (parse-formula (expand-multivar-exists VAR DOM TEST BODY)))))
+        (t
+         (when tracep (format t "[TRACE] EXISTS ~S over ~S~%" VAR DOM))
+         (parse-formula (expand-multivar-exists VAR DOM TEST BODY)))))
 
 
 (defun parse-for (VAR DOM TEST BODY)
   (cond ((null DOM) nil) ;; the empty list of clauses
         ;; a single variable is specified
-        ((not (listp VAR)) (append (parse-expression-binding VAR (car DOM) TEST BODY nil)
-                             (parse-for VAR (cdr DOM) TEST BODY)))
+        ((not (listp VAR))
+         (when tracep (format t "[TRACE] FOR ~S = ~S~%" VAR (car DOM)))
+         (append (parse-expression-binding VAR (car DOM) TEST BODY nil)
+                 (parse-for VAR (cdr DOM) TEST BODY)))
         ;; a list of variables is specified
-        (t (parse-formula (expand-multivar-for VAR DOM TEST BODY)))))
+        (t
+         (when tracep (format t "[TRACE] FOR ~S over ~S~%" VAR DOM))
+         (parse-formula (expand-multivar-for VAR DOM TEST BODY)))))
 
 (defun parse-expression-binding (VAR VAL TEST BODY FAILED-TEST-RESULT)
   (let ((RESULT FAILED-TEST-RESULT))
