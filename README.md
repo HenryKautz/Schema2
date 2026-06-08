@@ -47,7 +47,7 @@ The Schema interpreter is written in Common Lisp, but it is not necessary to kno
 Common Lisp API
 ------------
 
-Invoke any implementation of Common Lisp, and load the file "schema.el". The following Lisp functions are available:
+Invoke any implementation of Common Lisp, and load the file "schema.lisp". The following Lisp functions are available:
 
 **(parse '(SCHEMA+) &optional '(OBSERVATION+)) returns ((OR LITERAL+)\*)**  
 Parse a list of schemas (see BNF syntax below) and return a list of symbolic ground clauses. Each OBSERVATION is a positive ground literal or a observed quantified formula as described below. When the schemas are expanded, they are simplified by replacing observed atoms by true and all non-observed atoms that employ the same predicates by false.
@@ -344,7 +344,67 @@ The input to Schema may include the following options, which should appear befor
 (option compact-encoding 1) 
 ; Do not create new propositions 
 (option compact-encoding 0) 
+
+; Enable tracing: prints [TRACE] lines showing domains, variable bindings, and clause counts.
+(option trace 1)
+; Disable tracing (default).
+(option trace 0)
 ```
+
+When tracing is enabled, the interpreter prints diagnostic output to standard output as it works:
+
+- `[TRACE] Domain NAME = (val ...)` — each domain as it is defined
+- `[TRACE] Formula: (OP ...)` — each top-level formula entering the parser
+- `[TRACE] ALL/EXISTS/FOR VAR = VAL` — each variable binding tried by a quantifier
+- `[TRACE] Multiply: N x M -> K clauses` — clause counts at each OR-distribution step
+
+The multiply trace is especially useful for diagnosing exponential clause blowup. When compact encoding is disabled, each multiply step performs a full cross-product; the clause count shown will grow multiplicatively. With compact encoding enabled, auxiliary propositions are introduced and the count grows only linearly.
+
+## Running Schema
+
+Requires SBCL and Quicklisp. The SAT solver defaults to `kissat` (configurable via the `sat-solver` variable in `schema.lisp`).
+
+Load the interpreter interactively:
+
+```sh
+sbcl --eval "(load \"schema.lisp\")"
+```
+
+Run end-to-end on a `.wff` file:
+
+```sh
+sbcl --eval "(load \"schema.lisp\")" \
+     --eval "(solve \"myfile.wff\")" \
+     --eval "(quit)"
+```
+
+**Note:** On some SBCL installations the short flag `-e` is not recognized. Always use `--eval` (long form).
+
+## Testing
+
+The repository includes test `.wff` files and gold reference `.scnf` files:
+
+- `passed/` — `.wff` inputs and their verified `.scnf` outputs
+- `tests/` — `.wff` inputs not yet verified
+- `gold/` — reference `*_gold.scnf` files for comparison
+
+Run a single test with `run-test.sh`:
+
+```sh
+bash run-test.sh <testname>   # e.g. bash run-test.sh test_all_exists
+```
+
+This instantiates `tests/<testname>.wff`, writes `tests/<testname>.scnf`, and prints the output. Compare against the gold file:
+
+```sh
+diff tests/<testname>.scnf gold/<testname>_gold.scnf
+```
+
+**Note:** Gensym symbols (`#:XXnnn`) in the output will have different numbers across SBCL sessions. When gensyms are present, compare clause counts and structure rather than exact text.
+
+### Known limitation: compact-encoding and nested exists
+
+With `(option compact-encoding 0)`, the OR-distribution step performs a full cross-product of clauses instead of introducing auxiliary Tseitin propositions. Nested `exists` quantifiers over large domains can cause exponential clause blowup. Keep domains small (≤ 3 values) when using `compact-encoding 0` with nested quantifiers, or omit the option to use the default Tseitin encoding.
 
 ## Implementing SatPlan in Schema
 
@@ -357,7 +417,7 @@ Schema BNF
     
     <option> = (option <option name> <integer expression>)
     
-    <option name> = compact-encoding
+    <option name> = compact-encoding | trace
     
     <domain declaration> = (domain <domain name> <set expression>)
     
