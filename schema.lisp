@@ -36,7 +36,7 @@
   (let ((exit-code (nth-value 2
                     (uiop:run-program
                       (list "grep" "-q" search-string filename)
-                      :ignore-exit-status t
+                      :ignore-error-status t
                       :output nil :error-output nil))))
     (zerop exit-code)))
 
@@ -63,7 +63,7 @@
   (if (not SATOUTFILE)
       (setq SATOUTFILE (replace-suffix-with-regex CNFFILE "\\..*?$" ".satout")))
   (handler-case
-      (uiop:run-program sat-solver :arguments (list CNFFILE) :search-path t
+      (uiop:run-program (list sat-solver CNFFILE)
                         :output SATOUTFILE :ignore-error-status t)
     (error () (return-from satisfy nil)))
   ;; Check UNSAT first since SAT is a substring of UNSAT/UNSATISFIABLE.
@@ -261,25 +261,29 @@
       (format t "::term-search :found=~S :notfound=~S :test=~S :qbody=~S :assumptions=~S~%"
               found notfound test qbody assumptions))
   (cond
-   ((null notfound) `(BINDINGS ,@found))
+   ;; All variables found: unwrap single-element domain lists back to atoms for output
+   ((null notfound) `(BINDINGS ,@(mapcar (lambda (e) (list (car e) (caadr e))) found)))
    (t (let* ((var (caar notfound))
              (dom (cadar notfound))
+             ;; construct-query expects (var (term...)) for both found and notfound
              (query (construct-query (append found notfound) test qbody))
-             (wff (append (parse-schema query) assumptions))
+             (wff (append (mapcar (lambda (c) (cons 'or c)) (parse-schema query))
+                          assumptions))
              (result (test-scnf wff)))
         (if debugp
             (format t "::term-search :var=~S :dom=~S :query=~S :wff=~S :result=~S~%"
                     var dom query wff result))
         (cond ((eq result 'SAT) nil)
               ((= (length dom) 1)
-                (term-search (cons (list var (car dom)) found) (cdr notfound) test qbody assumptions))
+                ;; Store (var (term)) so construct-query can splice the domain correctly
+                (term-search (cons (list var (list (car dom))) found) (cdr notfound) test qbody assumptions))
               (t (multiple-value-bind (dom1 dom2) (split-list dom)
                    (or (term-search found (cons (list var dom1) (cdr notfound)) test qbody assumptions)
                        (term-search found (cons (list var dom2) (cdr notfound)) test qbody assumptions)))))))))
 
 (defun construct-query (var-doms test qbody)
   (cond ((null var-doms) `(not (if ,test ,qbody)))
-        (t `(all ,(caar var-doms) (set ,@(cadar var-doms)) t
+        (t `(all ,(caar var-doms) (set ,@(cadar var-doms)) true
                  ,(construct-query (cdr var-doms) test qbody)))))
 
 (defun ut-construct-query ()
@@ -328,19 +332,20 @@
             (let* ((vdlist (cadr prove-form))
                    (test (caddr prove-form))
                    (qbody (cadddr prove-form))
-                   (assumptions (parse rest-of-wff observations)))
+                   (assumptions (parse rest-of-wff observations))
+                   (notfound (expand-var-domain-list vdlist)))
               ;; First check whether the theory plus the negation of the prove
               ;; conclusion is satisfiable.  If SAT, that model is a counterexample.
               ;; If UNSAT, the theory entails the conclusion and we attempt answer
               ;; extraction.
               (multiple-value-bind (sat-result model)
-                  (test-scnf (append (parse-schema `(not (if ,test ,qbody)))
+                  (test-scnf (append (mapcar (lambda (c) (cons 'or c))
+                                             (parse-schema (construct-query notfound test qbody)))
                                      assumptions))
                 (cond ((eq sat-result 'SAT)
                         (values 'COUNTEREXAMPLE model))
                       (t
-                        (let* ((notfound (expand-var-domain-list vdlist))
-                               (bindings (term-search nil notfound test qbody assumptions)))
+                        (let* ((bindings (term-search nil notfound test qbody assumptions)))
                           (cond ((null bindings) (values 'NOANSWER nil))
                                 (t (values 'PROVEN (cdr bindings)))))))))))))
 
@@ -559,7 +564,7 @@
           ((eql op 'or) (parse-formula (cons 'and (negate-list (cdr F)))))
           ((eql op 'implies) (parse-formula (list 'and (cadr F) (list 'not (caddr F)))))
           ((eql op 'if) (cond ((is-true (parse-integer-expression (cadr F))) (parse-formula `(not ,(caddr F))))
-                              (t '(()))))
+                              (t nil)))
           ((eql op 'equiv) (append (parse-formula `(or ,(cadr F) ,(caddr F)))
                              (parse-formula `(or (not ,(cadr F)) (not ,(caddr F))))))
           ((eql op 'all) (parse-formula `(exists ,(cadr F) ,(caddr F) ,(cadddr F) (not ,(car (cddddr F))))))
@@ -765,6 +770,8 @@
 
 (defun parse-expression (EXPR)
   (cond ((and (symbolp EXPR) (not (null EXPR)) (is-bound EXPR)) (binding-of EXPR))
+        ((eql EXPR 'true) 1)
+        ((eql EXPR 'false) 0)
         ((atom EXPR) EXPR)
         (t (let ((op (car EXPR)))
              (cond ((eql op 'not) (if (is-true (parse-expression (cadr EXPR))) 0 1))
