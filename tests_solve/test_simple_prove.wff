@@ -1,0 +1,5 @@
+(domain Person (set Alice Bob Charlie))  
+(shorter Alice Bob)  
+(shorter Bob Charlie)  
+(all (x y z) Person true (implies (and (shorter x y) (shorter y z)) (shorter x z))) 
+(prove () true (exists (x y z) Person (neq y z) (and (shorter x y) (shorter x z))))

@@ -1,0 +1,7 @@
+(domain Person (set Alice Bob))  
+(domain Job (set Mechanic Driver Programmer))  
+(all x Person true (and (works x Mechanic) (works x Driver)))
+(works Alice Mechanic)  
+(works Bob Programmer)  
+(prove ((p Person) ((j1 j2) Job)) (neq j1 j2) (and (works p j1) (works p j2)))
+

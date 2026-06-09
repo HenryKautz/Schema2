@@ -1,0 +1,4 @@
+(domain person (set Alice John))
+(exists x person true (happy x))
+(prove () true (exists y person true (happy y)))
+

@@ -12,9 +12,12 @@ Schema is a finite-domain first-order logic language that compiles to propositio
 - `*.cnf` — DIMACS CNF files (input to SAT solver)
 - `*.out` / `*.satout` — SAT solver output
 - `README.md` — Full language reference and user guide
-- `tests/` — Test `.wff` inputs not yet verified (includes new/in-progress tests)
-- `passed/` — Test `.wff` and `.scnf` files for tests that have been verified correct
-- `gold/` — Reference `*_gold.scnf` files for comparing against `instantiate` output
+- `tests_instantiate/` — In-progress `.wff` files for `instantiate` tests
+- `passed_instantiate/` — Verified passing `.wff` and `.scnf` pairs for `instantiate`
+- `gold_instantiate/` — Reference `*_gold.scnf` files for `instantiate` comparison
+- `tests_solve/` — In-progress `.wff` files for `solve` tests
+- `passed_solve/` — Verified passing `.wff` and `.soln` pairs for `solve`
+- `gold_solve/` — Reference `*_gold.soln` files for `solve` comparison
 
 ## Key APIs (in schema.lisp)
 
@@ -37,17 +40,21 @@ Requires SBCL with Quicklisp. The SAT solver defaults to `kissat` (configurable 
 
 ## Testing
 
-Run a single test with `run-test.sh`:
+Two test runners:
 
 ```sh
-bash run-test.sh <testname>   # e.g. bash run-test.sh test_all_exists
+bash run-test-instantiate.sh <testname>   # e.g. bash run-test-instantiate.sh test_all_exists
+bash run-test-solve.sh <testname>         # e.g. bash run-test-solve.sh test_simple_deduction
 ```
 
-This runs `instantiate` on `tests/<testname>.wff`, writes `tests/<testname>.scnf`, and cats the output.
+`run-test-instantiate.sh` runs `instantiate` on `tests_instantiate/<testname>.wff`, writes `tests_instantiate/<testname>.scnf`, and cats the output.
+
+`run-test-solve.sh` runs `solve` on `tests_solve/<testname>.wff`, writes `tests_solve/<testname>.soln`, and cats the output.
 
 Compare output against gold:
 ```sh
-diff tests/<testname>.scnf gold/<testname>_gold.scnf
+diff tests_instantiate/<testname>.scnf gold_instantiate/<testname>_gold.scnf
+diff tests_solve/<testname>.soln gold_solve/<testname>_gold.soln
 ```
 
 Note: `#:XXnnn` gensym numbers will differ across SBCL sessions — compare clause counts and structure rather than exact text when gensyms are present.

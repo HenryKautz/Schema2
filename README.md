@@ -382,25 +382,42 @@ sbcl --eval "(load \"schema.lisp\")" \
 
 ## Testing
 
-The repository includes test `.wff` files and gold reference `.scnf` files:
+Tests are split into two categories: `instantiate` tests (checking CNF generation) and `solve` tests (checking end-to-end SAT solving and answer extraction). Each category has three directories:
 
-- `passed/` — `.wff` inputs and their verified `.scnf` outputs
-- `tests/` — `.wff` inputs not yet verified
-- `gold/` — reference `*_gold.scnf` files for comparison
+| Directory | Purpose |
+|---|---|
+| `tests_instantiate/` | `.wff` files for instantiate tests in progress |
+| `passed_instantiate/` | `.wff` and `.scnf` files for verified passing instantiate tests |
+| `gold_instantiate/` | Reference `*_gold.scnf` files for instantiate comparison |
+| `tests_solve/` | `.wff` files for solve tests in progress |
+| `passed_solve/` | `.wff` and `.soln` files for verified passing solve tests |
+| `gold_solve/` | Reference `*_gold.soln` files for solve comparison |
 
-Run a single test with `run-test.sh`:
+### Running instantiate tests
 
 ```sh
-bash run-test.sh <testname>   # e.g. bash run-test.sh test_all_exists
+bash run-test-instantiate.sh <testname>   # e.g. bash run-test-instantiate.sh test_all_exists
 ```
 
-This instantiates `tests/<testname>.wff`, writes `tests/<testname>.scnf`, and prints the output. Compare against the gold file:
+This instantiates `tests_instantiate/<testname>.wff`, writes `tests_instantiate/<testname>.scnf`, and prints the output. Compare against the gold file:
 
 ```sh
-diff tests/<testname>.scnf gold/<testname>_gold.scnf
+diff tests_instantiate/<testname>.scnf gold_instantiate/<testname>_gold.scnf
 ```
 
-**Note:** Gensym symbols (`#:XXnnn`) in the output will have different numbers across SBCL sessions. When gensyms are present, compare clause counts and structure rather than exact text.
+### Running solve tests
+
+```sh
+bash run-test-solve.sh <testname>   # e.g. bash run-test-solve.sh test_simple_deduction
+```
+
+This runs `solve` on `tests_solve/<testname>.wff`, writes `tests_solve/<testname>.soln`, and prints the output. Compare against the gold file:
+
+```sh
+diff tests_solve/<testname>.soln gold_solve/<testname>_gold.soln
+```
+
+**Note:** Gensym symbols (`#:XXnnn`) in instantiate output will have different numbers across SBCL sessions. When gensyms are present, compare clause counts and structure rather than exact text.
 
 ### Known limitation: compact-encoding and nested exists
 

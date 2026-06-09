@@ -1,0 +1,3 @@
+(domain ColorValue (set Red Blue Green))
+(exists c ColorValue (Color c))
+(not (exists (c1 c2) ColorValue (neq c1 c2) (and (Color c1) (Color c2))))
