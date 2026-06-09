@@ -817,8 +817,10 @@
         (t (cons LOW (parse-range (+ 1 LOW) HIGH)))))
 
 (defun parse-observed-literal-expression (EXPR)
-  (gethash (cons (car EXPR) (map 'list #'parse-expression (cdr EXPR)))
-           ObservedLiterals 0))
+  (let* ((name (car EXPR))
+         (args (map 'list #'parse-expression (cdr EXPR)))
+         (key (if (null args) name (cons name args))))
+    (gethash key ObservedLiterals 0)))
 
 (defun parse-enumerated-set (EXPR)
   (cond ((null EXPR) nil)
@@ -833,7 +835,9 @@
 (defun parse-proposition (P)
   (cond ((null P) (error "Unexpected empty set"))
         ((atom P) P)
-        (t (cons (parse-name (car P)) (parse-terms (cdr P))))))
+        (t (let ((name (parse-name (car P)))
+                 (args (parse-terms (cdr P))))
+             (if (null args) name (cons name args))))))
 
 (defun parse-terms (TERMS)
   (cond ((null TERMS) nil)

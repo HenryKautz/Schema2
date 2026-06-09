@@ -1,0 +1,51 @@
+;; test_comprehensive.wff
+;; Exercises language features not covered by other tests:
+;;   equiv, (if test formula), or/and as formulas in solve context,
+;;   operators: =, >, >=, <=, -, *, div, rem, mod, **, member
+;;   set-difference, intersection
+;;   (and ...) and (if ...) as top-level observed body forms
+
+(alias top 5)
+(alias half 2)
+
+;; Domains using various filters
+(domain num (range 1 top))
+(domain small (for i num (<= i half) (set i)))          ;; <=
+(domain large (for i num (> i half) (set i)))           ;; >
+(domain evens (for i num (= 0 (mod i 2)) (set i)))     ;; =, mod
+(domain odds (set-difference num evens))                 ;; set-difference
+(domain mid (intersection small large))                  ;; intersection (empty: {1,2}∩{3,4,5}={})
+(domain mid2 (intersection num (range 2 4)))            ;; intersection with range -> {2,3,4}
+
+;; Observed using (and ...) and (if ...) body forms
+(observed
+  (and (prime 2) (prime 3) (prime 5))        ;; and as top-level observed body
+  (if (>= top 5) (five-or-more)))            ;; if as top-level observed body, >=
+
+;; Use observed predicate in a test (prime is now observed)
+(all i num (prime i) (is-prime i))
+
+;; or as a formula: at least one of these holds
+(or (base-a) (base-b))
+
+;; if as a formula: if 4 > 3, assert a fact
+(if (> 4 3) (four-gt-three))                           ;; if-formula, >
+
+;; Formulas using >=, <=, -, *, div, rem, mod, ** in tests
+(all i num (>= i (- top 1)) (near-top i))             ;; >=, - : i=4,5
+(all i num (= 1 (rem i 2)) (odd-rem i))               ;; rem : odd i=1,3,5
+(all i num (= 0 (mod i 2)) (even-mod i))              ;; mod : even i=2,4
+(all i num (> (* i i) top) (large-sq i))              ;; >, * : i>=3 (9>5)
+(all i num (= 1 (div i 3)) (div3-eq1 i))              ;; div : i=3,4,5 (div/3=1)
+(all i num (= i (** i 1)) (power1-id i))              ;; ** : all i (i^1=i)
+(all i num (member i mid2) (in-mid2 i))               ;; member : i=2,3,4
+
+;; and as a formula: assert both facts
+(and (fact-a) (fact-b))
+
+;; equiv: anchor is asserted; equiv forces confirmed
+(anchor)
+(equiv anchor confirmed)                               ;; equiv
+
+;; Prove: confirmed holds (forced via equiv from anchor)
+(prove () true confirmed)
